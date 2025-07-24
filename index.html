@@ -445,7 +445,7 @@
         #report-output-container .table-wrapper.align-center { justify-content: center; }
         #report-output-container .table-wrapper.align-right { justify-content: flex-end; }
         
-        #report-output-container .data-table {
+        #report-output-container .data-table:not(.proof-record-table) {
             width: auto; 
             display: inline-block;
         }
@@ -477,6 +477,26 @@
             background-color: #007bff;
             color: white;
             border-color: #007bff;
+        }
+
+        /* Estilos para Ata de Prova */
+        .report-extra-info {
+            text-align: left;
+            margin: 1rem 0;
+            font-weight: bold;
+        }
+        #report-output-container .proof-record-table {
+            width: 100%;
+            table-layout: fixed !important; 
+        }
+        #report-output-container .proof-record-table .col-student {
+            width: auto;
+            text-align: left !important;
+            white-space: normal;
+            word-break: break-word;
+        }
+        #report-output-container .proof-record-table .col-sign {
+            width: 35%;
         }
         
         /* Regra que agrupa os overlays dos modais */
@@ -560,14 +580,15 @@
             .report-content { page-break-after: always; margin-bottom: 0; }
             .report-content:last-of-type { page-break-after: auto; }
             #report-output-container hr { display: none; }
-            #report-output-container {
+            #reports-view.view-panel, #report-output-container {
                 position: absolute;
                 left: 0;
                 top: 0;
                 width: 100%;
                 padding: 10px;
-                box-shadow: none;
-                border: none;
+                box-shadow: none !important;
+                border: none !important;
+                background: none !important;
             }
             #report-output-container h3, #report-output-container h4 { text-align: center; color: black; }
             #report-output-container table {
@@ -577,6 +598,9 @@
                 border-collapse: collapse; 
                 border: 1px solid #333; 
             }
+             #report-output-container .proof-record-table {
+                table-layout: fixed !important;
+            }
             #report-output-container .align-left { justify-content: flex-start; }
             #report-output-container .align-center { justify-content: center; }
             #report-output-container .align-right { justify-content: flex-end; }
@@ -585,7 +609,7 @@
                 background-color: white !important;
                 position: static !important;
             }
-            .report-controls, #sync-footer { display: none; }
+            .report-controls, #sync-footer, .slider-controls { display: none; }
         }
     </style>
     <!-- FIM DO CSS -->
@@ -636,7 +660,7 @@
                 <div class="header-button-group">
                     <button id="year-sel-back-btn" class="header-btn">⬅️</button>
                     <button id="home-btn" class="header-btn">🏠</button>
-                    <button id="favorites-header-btn" class="header-btn star-icon">★</button>
+                    <button id="year-sel-favorites-btn" class="header-btn star-icon">★</button>
                     <button id="reports-header-btn-year" class="header-btn">🖨️</button>
                     <button class="header-btn backup-btn">↕️</button>
                 </div>
@@ -1073,6 +1097,11 @@
             <label for="import-notes-name">Nome da Nova Avaliação:</label>
             <input type="text" id="import-notes-name" required>
             
+            <div id="import-notes-value-container" class="hidden">
+                 <label for="import-notes-value">Valor da Avaliação:</label>
+                 <input type="number" id="import-notes-value" step="0.1" required>
+            </div>
+
             <label for="import-notes-source">Fonte dos Dados:</label>
             <select id="import-notes-source" required></select>
             
@@ -1258,6 +1287,7 @@
         const importNotesForm = $('#import-notes-form');
         const cancelImportNotesBtn = $('#cancel-import-notes-btn');
         const importNotesSourceSelect = $('#import-notes-source');
+        const importNotesValueContainer = $('#import-notes-value-container');
         const recoveryModalOverlay = $('#recovery-modal-overlay');
         const recoveryForm = $('#recovery-form');
         const recoveryTypeSelect = $('#recovery-type-select');
@@ -1575,7 +1605,7 @@
                         <div>(Valor: ${av.value.toFixed(1).replace('.', ',')})</div>
                         <div class="col-header-actions">
                             <button class="edit-assessment-name-btn" data-id="${av.id}">✏️</button>
-                            <button class="${isEditingThisColumn ? 'save-col-btn' : 'edit-col-btn'}" data-id="${av.id}">${isEditingThisColumn ? '💾' : '📝'}</button>
+                            <button class="${isEditingThisColumn ? 'save-col-btn' : 'edit-col-btn'}" data-id="${av.id}">${isEditingThisColumn ? '💾' : ' '}</button>
                             <button class="remove-assessment-btn" data-id="${av.id}">🗑️</button>
                         </div>
                     </th>`);
@@ -2452,19 +2482,48 @@
         });
 
         importNotesBtn.addEventListener('click', () => {
-            importNotesSourceSelect.innerHTML = '';
+            importNotesSourceSelect.innerHTML = '<option value="">-- Selecione a Fonte --</option>';
             const sources = {
                 vistos: vistosResults.find(r => r.id === `${selectedClassId}-${selectedPeriod}`),
-                continuous: continuousAssessmentsResults.find(r => r.id === `ca-${selectedClassId}-${selectedPeriod}`)
+                continuous: continuousAssessmentsResults.find(r => r.id === `ca-${selectedClassId}-${selectedPeriod}`),
+                continuousCols: continuousAssessments.filter(ca => ca.classId === selectedClassId && ca.period === selectedPeriod)
             };
+
             if (sources.vistos) importNotesSourceSelect.insertAdjacentHTML('beforeend', `<option value="vistos">Total de Vistos (Valor: ${sources.vistos.totalValue.toFixed(1).replace('.',',')})</option>`);
             if (sources.continuous) importNotesSourceSelect.insertAdjacentHTML('beforeend', `<option value="continuous">Total de Avaliações Contínuas</option>`);
             
-            if (importNotesSourceSelect.options.length > 0) {
+            if(sources.continuousCols.length > 0){
+                const group = document.createElement('optgroup');
+                group.label = 'Avaliações Contínuas Individuais';
+                sources.continuousCols.forEach(col => {
+                    const date = new Date(col.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    group.insertAdjacentHTML('beforeend', `<option value="ca-${col.id}">Aval. Cont. (${date})</option>`);
+                });
+                importNotesSourceSelect.appendChild(group);
+            }
+
+            if (importNotesSourceSelect.options.length > 1) {
                 importNotesForm.reset();
+                importNotesValueContainer.classList.add('hidden');
                 importNotesModalOverlay.classList.remove('hidden');
             } else {
-                showModal('Não há resultados calculados em "Atividades" para importar.');
+                showModal('Não há resultados ou atividades para importar.');
+            }
+        });
+        
+        importNotesSourceSelect.addEventListener('change', (event) => {
+            const selectedValue = event.target.value;
+            if (selectedValue.startsWith('ca-')) {
+                importNotesValueContainer.classList.remove('hidden');
+                const assessmentId = parseInt(selectedValue.replace('ca-', ''));
+                const assessment = continuousAssessments.find(ca => ca.id === assessmentId);
+                if (assessment) {
+                    const date = new Date(assessment.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    $('#import-notes-name').value = `Aval. Cont. ${date}`;
+                }
+            } else {
+                importNotesValueContainer.classList.add('hidden');
+                $('#import-notes-name').value = '';
             }
         });
 
@@ -2479,18 +2538,36 @@
                 showModal('Já existe uma avaliação com este nome.'); return;
             }
 
-            const sourceData = sourceKey === 'vistos'
-                ? vistosResults.find(r => r.id === `${selectedClassId}-${selectedPeriod}`)
-                : continuousAssessmentsResults.find(r => r.id === `ca-${selectedClassId}-${selectedPeriod}`);
+            let sourceData;
+            let newValue = 10.0; // Default value
+
+            if (sourceKey.startsWith('ca-')) {
+                const assessmentId = parseInt(sourceKey.replace('ca-', ''));
+                sourceData = continuousAssessments.find(ca => ca.id === assessmentId);
+                newValue = parseFloat($('#import-notes-value').value.replace(',', '.'));
+                if(isNaN(newValue) || newValue <= 0) {
+                    showModal('Por favor, insira um valor válido para a avaliação.');
+                    return;
+                }
+            } else if (sourceKey === 'vistos') {
+                sourceData = vistosResults.find(r => r.id === `${selectedClassId}-${selectedPeriod}`);
+                newValue = sourceData.totalValue;
+            } else if (sourceKey === 'continuous') {
+                sourceData = continuousAssessmentsResults.find(r => r.id === `ca-${selectedClassId}-${selectedPeriod}`);
+                newValue = 10.0;
+            }
+
             if (!sourceData) { showModal('Erro ao encontrar dados de origem.'); return; }
+            
+            const gradesToImport = sourceData.grades || sourceData.scores;
 
             avaliacoes.push({
                 id: Date.now(),
                 name: newName,
-                value: sourceData.totalValue || 10.0,
+                value: newValue,
                 classId: selectedClassId,
                 period: selectedPeriod,
-                grades: sourceData.scores.map(s => ({ studentId: s.studentId, grade: s.score }))
+                grades: gradesToImport.map(s => ({ studentId: s.studentId, grade: s.grade !== undefined ? s.grade : s.score }))
             });
 
             saveDb('avaliacoes_db', avaliacoes);
@@ -2844,7 +2921,9 @@
             if (button.classList.contains('go-favorite-btn')) {
                 const favorite = favorites.find(f => f.id === favId);
                 if (favorite) {
-                    Object.assign(window, { selectedInstitutionId: favorite.institutionId, selectedYearId: favorite.yearId, selectedPeriod: favorite.period });
+                    selectedInstitutionId = favorite.institutionId;
+                    selectedYearId = favorite.yearId;
+                    selectedPeriod = favorite.period;
                     navigateTo('period-selection-view', { fromFavorite: true });
                 }
             } else if (button.classList.contains('remove-favorite-btn')) {
@@ -2871,14 +2950,24 @@
                     <option value="complete">Relatório Completo</option>
                     <option value="recovery-students">Alunos em Recuperação ${periodTypeName}</option>
                     <option value="recovery-grades">Notas da Recuperação ${periodTypeName}</option>
-                    <option value="final-grades">Médias Finais</option>`);
+                    <option value="final-grades">Médias Finais</option>
+                    <option value="proof-record">Ata de Prova</option>`);
             }
         });
 
         reportYearSelect.addEventListener('change', () => {
             const yearId = parseInt(reportYearSelect.value);
-            if (renderClassSelection(reportClassSelect, yearId)) {
-                reportClassSelect.insertAdjacentHTML('afterbegin', '<option value="all">Todas as Turmas</option>');
+            const turmasDoAno = turmas.filter(t => t.yearId === yearId);
+            reportClassSelect.innerHTML = '<option value="">Selecione uma Turma</option>';
+            if (turmasDoAno.length > 0) {
+                reportClassSelect.insertAdjacentHTML('beforeend', '<option value="all">Todas as Turmas</option>');
+                turmasDoAno.sort((a,b) => `${a.name} - ${a.subject}`.localeCompare(`${b.name} - ${b.subject}`));
+                turmasDoAno.forEach(turma => {
+                    const option = document.createElement('option');
+                    option.value = turma.id;
+                    option.textContent = `${turma.name} - ${turma.subject}`;
+                    reportClassSelect.appendChild(option);
+                });
             }
             reportPeriodSelect.innerHTML = '<option value="">Selecione um Período</option>';
         });
@@ -2900,7 +2989,9 @@
             const classIdValue = reportClassSelect.value;
             const period = reportPeriodSelect.value;
             const type = reportTypeSelect.value;
-            if (!instId || !yearId || !classIdValue || !period || !type) {
+            
+            const isProofRecord = type === 'proof-record';
+            if (!instId || !yearId || !classIdValue || (!period && !isProofRecord) || !type) {
                 showModal('Preencha todos os filtros para gerar o relatório.');
                 return;
             }
@@ -2913,14 +3004,15 @@
                 'complete': generateCompleteReportHTML,
                 'recovery-students': generateRecoveryStudentsReportHTML,
                 'recovery-grades': generateRecoveryGradesReportHTML,
-                'final-grades': generateFinalGradesReportHTML
+                'final-grades': generateFinalGradesReportHTML,
+                'proof-record': generateProofRecordHTML
             };
 
             let reportHTML = classesToReport.map(turma => {
                 if (!turma) return '';
-                const title = `<h3>${institution.name}</h3><h4>Ano Letivo: ${year.year}</h4><h4>Turma: ${turma.name} - ${turma.subject}</h4><h4>Período: ${period}</h4>`;
+                const title = `<h3>${institution.name}</h3><h4>Ano Letivo: ${year.year}</h4><h4>Turma: ${turma.name} - ${turma.subject}</h4>${!isProofRecord ? `<h4>Período: ${period}</h4>` : ''}`;
                 const tableHTML = reportGenerators[type](institution, turma.id, period);
-                return `<div class="report-content"><div class="report-header">${title}</div><div class="table-wrapper align-center">${tableHTML}</div></div>`;
+                return `<div class="report-content"><div class="report-header">${title}</div>${tableHTML}</div>`;
             }).join('');
         
             if (reportHTML) {
@@ -2991,7 +3083,7 @@
                 }
                 return `<tr>${rowData.map(d => `<td>${d}</td>`).join('')}</tr>`;
             }).join('');
-            return `<table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+            return `<div class="table-wrapper align-center"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
         }
         
         function generateRecoveryStudentsReportHTML(institution, classId, period) {
@@ -3003,7 +3095,7 @@
                 .sort((a, b) => a.student.number - b.student.number);
             if (recoveryStudents.length === 0) return '<p>Nenhum aluno em recuperação neste período.</p>';
             const rows = recoveryStudents.map(item => `<tr><td>${item.student.number}. ${item.student.name}</td><td>${item.score.toFixed(1).replace('.', ',')}</td></tr>`).join('');
-            return `<table class="data-table"><thead><tr><th>Aluno</th><th>Média</th></tr></thead><tbody>${rows}</tbody></table>`;
+            return `<div class="table-wrapper align-center"><table class="data-table"><thead><tr><th>Aluno</th><th>Média</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         }
 
         function generateRecoveryGradesReportHTML(institution, classId, period) {
@@ -3016,7 +3108,7 @@
                 const rowData = [`${student.number}. ${student.name}`, ...recoveries.map(rec => (rec.grades.find(g => g.studentId === student.id) || {}).grade?.toFixed(1).replace('.',',') || '-')];
                 return `<tr>${rowData.map(d => `<td>${d}</td>`).join('')}</tr>`;
             }).join('');
-            return `<table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+            return `<div class="table-wrapper align-center"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
         }
         
         function generateFinalGradesReportHTML(institution, classId) {
@@ -3060,7 +3152,41 @@
                 rowData.push(roundedAverage.toFixed(1).replace('.',','), situation);
                 return `<tr>${rowData.map(d => `<td>${d}</td>`).join('')}</tr>`;
             }).join('');
-            return `<table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+            return `<div class="table-wrapper align-center"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+
+        function generateProofRecordHTML(institution, classId, period) {
+            const studentList = alunos.filter(a => a.classId === classId && a.active !== false).sort((a,b) => a.number - b.number);
+            if (studentList.length === 0) return '<p>Nenhum aluno ativo na turma para gerar a ata.</p>';
+
+            const rows = studentList.map(student => `
+                <tr>
+                    <td class="col-student">${student.number}. ${student.name}</td>
+                    <td class="col-sign"></td>
+                    <td class="col-sign"></td>
+                </tr>`).join('');
+            
+            const extraInfo = `
+                <div class="report-extra-info">
+                    <p>Data: _______/_______/_______</p>
+                    <p>Prova: ( &nbsp; &nbsp; ) P1 &nbsp; &nbsp; ( &nbsp; &nbsp; ) P2</p>
+                </div>`;
+
+            const table = `
+                <div class="table-wrapper align-center">
+                    <table class="data-table proof-record-table">
+                        <thead>
+                            <tr>
+                                <th class="col-student">Aluno</th>
+                                <th class="col-sign">Assinatura</th>
+                                <th class="col-sign">Assinatura de Devolutiva</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+
+            return extraInfo + table;
         }
         
         reportFiltersForm.addEventListener('submit', (event) => {
@@ -3169,3 +3295,4 @@
     <!-- FIM DO JAVASCRIPT -->
 </body>
 </html>
+ 
