@@ -989,7 +989,7 @@
             <div id="institution-buttons-container" class="institution-buttons"></div>
             
             <!-- NUVEM E LOGIN NA TELA INICIAL DIVIDINDO ESPAÇO COM BACKUP -->
-            <div id="cloud-auth-section" style="text-align: center; width: 100%; margin-top: 40px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <div id="cloud-auth-section" style="text-align: center; box-sizing: border-box; width: 100%; margin-top: 40px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <p id="cloud-user-info" style="font-weight: bold; margin-bottom: 10px; color: #555;">Status: Offline (Dados salvos apenas neste aparelho)</p>
                 <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
                     <button class="backup-btn" style="flex: 1; min-width: 140px; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: 1px solid #007bff; background: white; color: #007bff; font-weight: bold;">↕️ Backup Local</button>
@@ -1843,7 +1843,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.6</div>
+        <div id="app-version">v 1.7</div>
     </footer>
 
 
@@ -1873,7 +1873,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.6';
+                const CACHE_NAME = 'diario-prof-v1.7';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
