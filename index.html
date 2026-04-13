@@ -987,11 +987,26 @@
         <header class="dashboard-header"><h1>Diário do Professor</h1></header>
         <main class="dashboard-main">
             <div id="institution-buttons-container" class="institution-buttons"></div>
-            <div class="management-buttons">
+            
+            <!-- NUVEM E LOGIN NA TELA INICIAL DIVIDINDO ESPAÇO COM BACKUP -->
+            <div id="cloud-auth-section" style="text-align: center; width: 100%; margin-top: 40px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <p id="cloud-user-info" style="font-weight: bold; margin-bottom: 10px; color: #555;">Status: Offline (Dados salvos apenas neste aparelho)</p>
+                <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                    <button class="backup-btn" style="flex: 1; min-width: 140px; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: 1px solid #007bff; background: white; color: #007bff; font-weight: bold;">↕️ Backup Local</button>
+                    <button id="google-login-btn" style="flex: 1; min-width: 140px; background-color: #fff; color: #EA4335; border: 1px solid #EA4335; display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                        Fazer Login
+                    </button>
+                    <button id="google-logout-btn" class="hidden" style="flex: 1; min-width: 140px; background-color: #dc3545; color: white; border: 1px solid #dc3545; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Sair da Nuvem</button>
+                    <button id="download-cloud-btn" class="hidden" style="flex: 1; min-width: 140px; background-color: #28a745; color: white; border: 1px solid #28a745; padding: 10px 20px; border-radius: 5px; cursor: pointer;">☁️ Baixar Nuvem</button>
+                    <button id="force-upload-cloud-btn" class="hidden" style="flex: 1; min-width: 140px; background-color: #17a2b8; color: white; border: 1px solid #17a2b8; padding: 10px 20px; border-radius: 5px; cursor: pointer;">☁️ Salvar Nuvem</button>
+                </div>
+            </div>
+
+            <div class="management-buttons" style="margin-top: 10px;">
                 <button id="manage-institutions-btn">Gerenciar Instituições</button>
                 <button id="favorites-btn"><span class="star-icon">★</span> Favoritos</button>
                 <button class="reports-main-btn">🖨️ Relatórios</button>
-                <button class="backup-btn">↕️ Backup</button>
             </div>
             <!-- NOVOS BOTÕES DE FUNCIONALIDADES -->
             <div class="main-feature-buttons">
@@ -1828,7 +1843,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.4</div>
+        <div id="app-version">v 1.6</div>
     </footer>
 
 
@@ -1858,7 +1873,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.4';
+                const CACHE_NAME = 'diario-prof-v1.6';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -1955,8 +1970,48 @@ let calendarIsEditMode = false;
 // FIM: Bloco 9
 // FIM: Bloco 4
 
-        // --- FUNÇÕES DE SALVAMENTO ---
-        const saveDb = (key, data) => localStorage.setItem(key, JSON.stringify(data));
+        // --- FUNÇÕES DE SALVAMENTO E NUVEM ---
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let cloudTimeout = null;
+        let appId = 'diario-prof-web'; 
+        let f_doc, f_setDoc, f_getDoc;
+
+        // Elementos DOM da Nuvem
+        const googleLoginBtn = document.getElementById('google-login-btn');
+        const googleLogoutBtn = document.getElementById('google-logout-btn');
+        const cloudUserInfo = document.getElementById('cloud-user-info');
+        const downloadCloudBtn = document.getElementById('download-cloud-btn');
+        const forceUploadCloudBtn = document.getElementById('force-upload-cloud-btn');
+
+        async function uploadToCloud() {
+            if (!currentUser || !db || !f_setDoc || !f_doc) return;
+            const backupData = {
+                institutions, anosLetivos, turmas, alunos, avaliacoes, vistos, vistosResults,
+                continuousAssessments, continuousAssessmentsResults, notesResults, favorites, annualRecoveryState,
+                schedules, assessmentCalendar, planningData, planningActivities, gradeAdjustments
+            };
+            try {
+                const docRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
+                await f_setDoc(docRef, { data: JSON.stringify(backupData), timestamp: new Date().toISOString() });
+                const statusEl = document.getElementById('sync-status');
+                if (statusEl) statusEl.textContent = 'Nuvem: Salvo com sucesso às ' + new Date().toLocaleTimeString();
+            } catch (e) {
+                console.error('Erro ao salvar na nuvem', e);
+            }
+        }
+
+        const saveDb = (key, data) => {
+            localStorage.setItem(key, JSON.stringify(data));
+            if (currentUser && db) {
+                clearTimeout(cloudTimeout);
+                const statusEl = document.getElementById('sync-status');
+                if (statusEl) statusEl.textContent = 'Nuvem: Salvando alterações...';
+                cloudTimeout = setTimeout(uploadToCloud, 2000); 
+            }
+        };
+
         const saveAllDbs = () => {
             saveDb('institutions_db', institutions);
             saveDb('anos_letivos_db', anosLetivos);
@@ -1968,14 +2023,123 @@ let calendarIsEditMode = false;
             saveDb('continuous_assessments_db', continuousAssessments);
             saveDb('continuous_assessments_results_db', continuousAssessmentsResults);
             saveDb('notes_results_db', notesResults);
-    saveDb('favorites_db', favorites);
-    saveDb('annual_recovery_state_db', annualRecoveryState);
-    saveDb('schedules_db', schedules); // LINHA ADICIONADA (PARTE DO BLOCO 6)
-    saveDb('assessment_calendar_db', assessmentCalendar); // INÍCIO: Bloco 9
-    saveDb('planning_db', planningData);
-    saveDb('planning_activities_db', planningActivities);
-    saveDb('grade_adjustments_db', gradeAdjustments);
-};
+            saveDb('favorites_db', favorites);
+            saveDb('annual_recovery_state_db', annualRecoveryState);
+            saveDb('schedules_db', schedules); // LINHA ADICIONADA (PARTE DO BLOCO 6)
+            saveDb('assessment_calendar_db', assessmentCalendar); // INÍCIO: Bloco 9
+            saveDb('planning_db', planningData);
+            saveDb('planning_activities_db', planningActivities);
+            saveDb('grade_adjustments_db', gradeAdjustments);
+        };
+
+        async function setupCloud() {
+            try {
+                const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                const { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const firestore = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                
+                f_doc = firestore.doc;
+                f_setDoc = firestore.setDoc;
+                f_getDoc = firestore.getDoc;
+                const getFirestore = firestore.getFirestore;
+
+                const firebaseConfig = {
+                    apiKey: "AIzaSyDls5i9F6nNeKvMK5cwOFVO-wYRQk3O0_Q",
+                    authDomain: "diariodoprofessor-34102.firebaseapp.com",
+                    projectId: "diariodoprofessor-34102",
+                    storageBucket: "diariodoprofessor-34102.firebasestorage.app",
+                    messagingSenderId: "775488564908",
+                    appId: "1:775488564908:web:fec6f168b2e416ed993909",
+                    measurementId: "G-748DCYFGGV"
+                };
+                
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                const provider = new GoogleAuthProvider();
+
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    const statusEl = document.getElementById('sync-status');
+                    
+                    if (user) {
+                        if(cloudUserInfo) { cloudUserInfo.textContent = `Nuvem conectada: ${user.email}`; cloudUserInfo.style.color = '#28a745'; }
+                        if(googleLoginBtn) googleLoginBtn.classList.add('hidden');
+                        if(googleLogoutBtn) googleLogoutBtn.classList.remove('hidden');
+                        if(downloadCloudBtn) downloadCloudBtn.classList.remove('hidden');
+                        if(forceUploadCloudBtn) forceUploadCloudBtn.classList.remove('hidden');
+                        if(statusEl) statusEl.textContent = 'Nuvem Conectada e Pronta.';
+                    } else {
+                        if(cloudUserInfo) { cloudUserInfo.textContent = 'Status: Offline (Dados salvos apenas neste aparelho)'; cloudUserInfo.style.color = '#555'; }
+                        if(googleLoginBtn) googleLoginBtn.classList.remove('hidden');
+                        if(googleLogoutBtn) googleLogoutBtn.classList.add('hidden');
+                        if(downloadCloudBtn) downloadCloudBtn.classList.add('hidden');
+                        if(forceUploadCloudBtn) forceUploadCloudBtn.classList.add('hidden');
+                        if(statusEl) statusEl.textContent = 'Dados locais. Nuvem desativada.';
+                    }
+                });
+
+                if (googleLoginBtn) {
+                    googleLoginBtn.addEventListener('click', async () => {
+                        try { await signInWithPopup(auth, provider); } 
+                        catch (error) { 
+                            if (error.code === 'auth/configuration-not-found') {
+                                showModal('Erro: Ative o Google no Firebase Console > Authentication > Sign-in method.');
+                            } else {
+                                showModal('Erro ao iniciar sessão: ' + error.message); 
+                            }
+                        }
+                    });
+                }
+
+                if (googleLogoutBtn) {
+                    googleLogoutBtn.addEventListener('click', async () => {
+                        try { await signOut(auth); showModal('Sessão terminada. O diário voltou ao modo 100% offline.'); } 
+                        catch (error) { showModal('Erro ao terminar sessão: ' + error.message); }
+                    });
+                }
+
+                if (downloadCloudBtn) {
+                    downloadCloudBtn.addEventListener('click', async () => {
+                        if (!currentUser || !db || !f_doc || !f_getDoc) return;
+                        try {
+                            downloadCloudBtn.textContent = 'Baixando...';
+                            const docRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
+                            const snap = await f_getDoc(docRef);
+                            if (snap.exists()) {
+                                const data = JSON.parse(snap.data().data);
+                                // Reaproveita a função de popup de Importação do Local
+                                const strategy = await getImportStrategy();
+                                if (strategy === 'cancel') { downloadCloudBtn.textContent = '☁️ Baixar Nuvem'; return; }
+                                if (strategy === 'replace') replaceDatabase(data);
+                                if (strategy === 'merge') mergeDatabase(data);
+                                saveAllDbs(); 
+                                showModal('Dados da nuvem restaurados! A página será recarregada.').then(() => location.reload());
+                            } else {
+                                showModal('Nenhum backup encontrado na nuvem.');
+                            }
+                        } catch (e) {
+                            showModal('Erro ao baixar: ' + e.message);
+                        } finally {
+                            downloadCloudBtn.textContent = '☁️ Baixar Nuvem';
+                        }
+                    });
+                }
+
+                if (forceUploadCloudBtn) {
+                    forceUploadCloudBtn.addEventListener('click', async () => {
+                        if (!currentUser || !db) return;
+                        forceUploadCloudBtn.textContent = 'Enviando...';
+                        await uploadToCloud();
+                        forceUploadCloudBtn.textContent = '☁️ Salvar Nuvem';
+                        showModal('Backup enviado para a nuvem com sucesso!');
+                    });
+                }
+            } catch (error) {
+                console.warn("O carregamento da Nuvem falhou:", error);
+            }
+        }
+        setupCloud();
         
         // --- FUNÇÃO AJUDANTE PARA SELETORES ---
         const $ = (selector) => document.querySelector(selector);
