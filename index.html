@@ -22,10 +22,10 @@
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            height: 100vh; /* Define a altura exata da janela */
-            overflow-y: auto; /* Permite rolar apenas se a janela for pequena/conteúdo exceder */
-            box-sizing: border-box; /* Impede que o padding crie uma rolagem fantasma */
-            padding-bottom: 60px; /* Espaço seguro para o rodapé fixo não cobrir nada */
+            min-height: 100vh; /* CORREÇÃO: min-height libera o scroll total da página */
+            overflow-y: auto; 
+            box-sizing: border-box; 
+            padding-bottom: 100px; /* CORREÇÃO: Mais espaço para o rodapé não cobrir nada */
         }
 
         .hidden {
@@ -40,7 +40,7 @@
         /* Regra que agrupa os painéis principais das views */
         .view-panel {
             max-width: 95%; 
-            margin: 0 auto;
+            margin: 0 auto 60px auto; /* CORREÇÃO: Margem inferior empurra o conteúdo para cima do rodapé */
             background-color: #fff;
             padding: 20px;
             border-radius: 8px;
@@ -1843,12 +1843,12 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.7</div>
+        <div id="app-version">v 1.8</div>
     </footer>
 
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
-    <script>
+    <script type="module">
     // --- INÍCIO DO SETUP PWA (MODO OFFLINE E INSTALÁVEL) ---
     const setupPWA = () => {
         // 1. Gera e injeta o Manifest (para permitir "Adicionar à Tela Inicial" com ícone)
@@ -1873,7 +1873,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.7';
+                const CACHE_NAME = 'diario-prof-v1.8';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -1986,19 +1986,23 @@ let calendarIsEditMode = false;
         const forceUploadCloudBtn = document.getElementById('force-upload-cloud-btn');
 
         async function uploadToCloud() {
-            if (!currentUser || !db || !f_setDoc || !f_doc) return;
+            if (!currentUser || !db || !f_setDoc || !f_doc) return false;
             const backupData = {
                 institutions, anosLetivos, turmas, alunos, avaliacoes, vistos, vistosResults,
                 continuousAssessments, continuousAssessmentsResults, notesResults, favorites, annualRecoveryState,
                 schedules, assessmentCalendar, planningData, planningActivities, gradeAdjustments
             };
             try {
-                const docRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
+                // ALTERADO: Caminho simplificado para evitar erros de permissão complexos
+                const docRef = f_doc(db, 'users', currentUser.uid);
                 await f_setDoc(docRef, { data: JSON.stringify(backupData), timestamp: new Date().toISOString() });
                 const statusEl = document.getElementById('sync-status');
                 if (statusEl) statusEl.textContent = 'Nuvem: Salvo com sucesso às ' + new Date().toLocaleTimeString();
+                return true;
             } catch (e) {
                 console.error('Erro ao salvar na nuvem', e);
+                showModal('Erro do Banco de Dados: Verifique se você criou o "Firestore Database" no Firebase. Detalhe: ' + e.message);
+                return false;
             }
         }
 
@@ -2104,7 +2108,8 @@ let calendarIsEditMode = false;
                         if (!currentUser || !db || !f_doc || !f_getDoc) return;
                         try {
                             downloadCloudBtn.textContent = 'Baixando...';
-                            const docRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
+                            // ALTERADO: Caminho simplificado igual ao de envio
+                            const docRef = f_doc(db, 'users', currentUser.uid);
                             const snap = await f_getDoc(docRef);
                             if (snap.exists()) {
                                 const data = JSON.parse(snap.data().data);
@@ -2116,7 +2121,7 @@ let calendarIsEditMode = false;
                                 saveAllDbs(); 
                                 showModal('Dados da nuvem restaurados! A página será recarregada.').then(() => location.reload());
                             } else {
-                                showModal('Nenhum backup encontrado na nuvem.');
+                                showModal('Nenhum backup encontrado na nuvem. Você já salvou algo lá?');
                             }
                         } catch (e) {
                             showModal('Erro ao baixar: ' + e.message);
@@ -2130,9 +2135,11 @@ let calendarIsEditMode = false;
                     forceUploadCloudBtn.addEventListener('click', async () => {
                         if (!currentUser || !db) return;
                         forceUploadCloudBtn.textContent = 'Enviando...';
-                        await uploadToCloud();
+                        const sucesso = await uploadToCloud();
                         forceUploadCloudBtn.textContent = '☁️ Salvar Nuvem';
-                        showModal('Backup enviado para a nuvem com sucesso!');
+                        if (sucesso) {
+                            showModal('Backup enviado para a nuvem com sucesso!');
+                        }
                     });
                 }
             } catch (error) {
