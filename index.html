@@ -1843,7 +1843,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.8</div>
+        <div id="app-version">v 1.9</div>
     </footer>
 
 
@@ -1873,7 +1873,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.8';
+                const CACHE_NAME = 'diario-prof-v1.9';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -2108,9 +2108,16 @@ let calendarIsEditMode = false;
                         if (!currentUser || !db || !f_doc || !f_getDoc) return;
                         try {
                             downloadCloudBtn.textContent = 'Baixando...';
-                            // ALTERADO: Caminho simplificado igual ao de envio
-                            const docRef = f_doc(db, 'users', currentUser.uid);
-                            const snap = await f_getDoc(docRef);
+                            // Tenta buscar no caminho novo
+                            let docRef = f_doc(db, 'users', currentUser.uid);
+                            let snap = await f_getDoc(docRef);
+                            
+                            // Se não achar, tenta o caminho antigo da versão 1.6 (por precaução)
+                            if (!snap.exists()) {
+                                const oldDocRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
+                                snap = await f_getDoc(oldDocRef);
+                            }
+
                             if (snap.exists()) {
                                 const data = JSON.parse(snap.data().data);
                                 // Reaproveita a função de popup de Importação do Local
@@ -2121,7 +2128,7 @@ let calendarIsEditMode = false;
                                 saveAllDbs(); 
                                 showModal('Dados da nuvem restaurados! A página será recarregada.').then(() => location.reload());
                             } else {
-                                showModal('Nenhum backup encontrado na nuvem. Você já salvou algo lá?');
+                                showModal('A nuvem está vazia! DICA: Abra o Diário no aparelho onde seus dados estão gravados (como o tablet), faça o login e clique em "☁️ Salvar Nuvem" primeiro.');
                             }
                         } catch (e) {
                             showModal('Erro ao baixar: ' + e.message);
