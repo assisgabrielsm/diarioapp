@@ -1913,9 +1913,8 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.11</div>
+        <div id="app-version">v 1.12</div>
     </footer>
-
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
     <script type="module">
@@ -1943,7 +1942,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.11';
+                const CACHE_NAME = 'diario-prof-v1.12';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -2858,8 +2857,10 @@ let calendarIsEditMode = false;
         }
 
         function roundToOneDecimal(num) {
-            // Adicionado Number.EPSILON para corrigir a imprecisão de ponto flutuante do JavaScript
-            return Math.round((num + Number.EPSILON) * 10) / 10;
+            // Passo 1: Elimina o "lixo" de imprecisão flutuante (ex: 9.149999999999999 vira 9.15)
+            const cleanNum = parseFloat(num.toFixed(4));
+            // Passo 2: Arredonda corretamente para 1 casa decimal
+            return Math.round((cleanNum + Number.EPSILON) * 10) / 10;
         }
 
         // ==================================================================
