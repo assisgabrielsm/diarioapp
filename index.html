@@ -2858,7 +2858,8 @@ let calendarIsEditMode = false;
         }
 
         function roundToOneDecimal(num) {
-            return Math.round(num * 10) / 10;
+            // Adicionado Number.EPSILON para corrigir a imprecisão de ponto flutuante do JavaScript
+            return Math.round((num + Number.EPSILON) * 10) / 10;
         }
 
         // ==================================================================
