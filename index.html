@@ -1913,7 +1913,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.12</div>
+        <div id="app-version">v 1.13</div>
     </footer>
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
@@ -2063,15 +2063,28 @@ let calendarIsEditMode = false;
                 schedules, assessmentCalendar, planningData, planningActivities, gradeAdjustments, attendanceData
             };
             try {
-                // ALTERADO: Caminho simplificado para evitar erros de permissão complexos
+                // Converte os dados para texto
+                const jsonString = JSON.stringify(backupData);
+                const chunkSize = 400000; // Divide em fatias de ~400KB para driblar o limite de 1MB
+                const numChunks = Math.ceil(jsonString.length / chunkSize);
+                
+                // Salva o documento principal na nuvem informando em quantas partes os dados foram divididos
                 const docRef = f_doc(db, 'users', currentUser.uid);
-                await f_setDoc(docRef, { data: JSON.stringify(backupData), timestamp: new Date().toISOString() });
+                await f_setDoc(docRef, { chunksCount: numChunks, timestamp: new Date().toISOString() });
+                
+                // Envia cada pedacinho para uma sub-pasta na nuvem
+                for (let i = 0; i < numChunks; i++) {
+                    const chunkRef = f_doc(db, 'users', currentUser.uid, 'backup_chunks', i.toString());
+                    const chunkData = jsonString.substring(i * chunkSize, (i + 1) * chunkSize);
+                    await f_setDoc(chunkRef, { data: chunkData });
+                }
+
                 const statusEl = document.getElementById('sync-status');
                 if (statusEl) statusEl.textContent = 'Nuvem: Salvo com sucesso às ' + new Date().toLocaleTimeString();
                 return true;
             } catch (e) {
                 console.error('Erro ao salvar na nuvem', e);
-                showModal('Erro do Banco de Dados: Verifique se você criou o "Firestore Database" no Firebase. Detalhe: ' + e.message);
+                showModal('Erro do Banco de Dados: Detalhe: ' + e.message);
                 return false;
             }
         }
@@ -2179,23 +2192,43 @@ let calendarIsEditMode = false;
                         if (!currentUser || !db || !f_doc || !f_getDoc) return;
                         try {
                             downloadCloudBtn.textContent = 'Baixando...';
-                            // Tenta buscar no caminho novo
                             let docRef = f_doc(db, 'users', currentUser.uid);
                             let snap = await f_getDoc(docRef);
                             
-                            // Se não achar, tenta o caminho antigo da versão 1.6 (por precaução)
-                            if (!snap.exists()) {
+                            let backupDataParsed = null;
+
+                            // 1. Verifica se os dados estão no NOVO formato (fatiado em pedaços)
+                            if (snap.exists() && snap.data().chunksCount !== undefined) {
+                                const chunksCount = snap.data().chunksCount;
+                                let fullJson = "";
+                                // Junta todos os pedaços de volta
+                                for (let i = 0; i < chunksCount; i++) {
+                                    const chunkSnap = await f_getDoc(f_doc(db, 'users', currentUser.uid, 'backup_chunks', i.toString()));
+                                    if (chunkSnap.exists()) {
+                                        fullJson += chunkSnap.data().data;
+                                    }
+                                }
+                                backupDataParsed = JSON.parse(fullJson);
+                            } 
+                            // 2. Tenta o formato ANTIGO (documento único menor que 1MB)
+                            else if (snap.exists() && snap.data().data) {
+                                backupDataParsed = JSON.parse(snap.data().data);
+                            }
+                            // 3. Tenta o formato MUITO ANTIGO (versão anterior do app)
+                            else {
                                 const oldDocRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
-                                snap = await f_getDoc(oldDocRef);
+                                const oldSnap = await f_getDoc(oldDocRef);
+                                if (oldSnap.exists()) {
+                                    backupDataParsed = JSON.parse(oldSnap.data().data);
+                                }
                             }
 
-                            if (snap.exists()) {
-                                const data = JSON.parse(snap.data().data);
-                                // Reaproveita a função de popup de Importação do Local
+                            // Se encontrou dados em qualquer um dos formatos, faz a importação
+                            if (backupDataParsed) {
                                 const strategy = await getImportStrategy();
                                 if (strategy === 'cancel') { downloadCloudBtn.textContent = '☁️ Baixar Nuvem'; return; }
-                                if (strategy === 'replace') replaceDatabase(data);
-                                if (strategy === 'merge') mergeDatabase(data);
+                                if (strategy === 'replace') replaceDatabase(backupDataParsed);
+                                if (strategy === 'merge') mergeDatabase(backupDataParsed);
                                 saveAllDbs(); 
                                 showModal('Dados da nuvem restaurados! A página será recarregada.').then(() => location.reload());
                             } else {
