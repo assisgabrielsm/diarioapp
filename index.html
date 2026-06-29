@@ -1913,7 +1913,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.13</div>
+        <div id="app-version">v 1.14</div>
     </footer>
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
@@ -1942,7 +1942,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.12';
+                const CACHE_NAME = 'diario-prof-v1.14';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -2099,7 +2099,7 @@ let calendarIsEditMode = false;
             }
         };
 
-        const saveAllDbs = () => {
+           const saveAllDbs = () => {
             saveDb('institutions_db', institutions);
             saveDb('anos_letivos_db', anosLetivos);
             saveDb('turmas_db', turmas);
@@ -2121,9 +2121,20 @@ let calendarIsEditMode = false;
         };
 
         async function setupCloud() {
+            // --- Proteção contra travamento de internet ruim ---
+            let cloudConnected = false;
+            // O cronômetro agora roda fora de qualquer tentativa de conexão
+            const timer = setTimeout(() => {
+                if (!cloudConnected) {
+                    console.warn("Nuvem demorando muito: liberando interface para modo offline.");
+                    const statusEl = document.getElementById('sync-status');
+                    if (statusEl) statusEl.textContent = 'Modo Offline (Nuvem indisponível ou lenta).';
+                }
+            }, 3000);
+
             try {
                 const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
-                const { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
                 const firestore = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
                 
                 f_doc = firestore.doc;
@@ -2197,11 +2208,9 @@ let calendarIsEditMode = false;
                             
                             let backupDataParsed = null;
 
-                            // 1. Verifica se os dados estão no NOVO formato (fatiado em pedaços)
                             if (snap.exists() && snap.data().chunksCount !== undefined) {
                                 const chunksCount = snap.data().chunksCount;
                                 let fullJson = "";
-                                // Junta todos os pedaços de volta
                                 for (let i = 0; i < chunksCount; i++) {
                                     const chunkSnap = await f_getDoc(f_doc(db, 'users', currentUser.uid, 'backup_chunks', i.toString()));
                                     if (chunkSnap.exists()) {
@@ -2210,11 +2219,9 @@ let calendarIsEditMode = false;
                                 }
                                 backupDataParsed = JSON.parse(fullJson);
                             } 
-                            // 2. Tenta o formato ANTIGO (documento único menor que 1MB)
                             else if (snap.exists() && snap.data().data) {
                                 backupDataParsed = JSON.parse(snap.data().data);
                             }
-                            // 3. Tenta o formato MUITO ANTIGO (versão anterior do app)
                             else {
                                 const oldDocRef = f_doc(db, 'artifacts', appId, 'users', currentUser.uid, 'cloudBackup', 'latest');
                                 const oldSnap = await f_getDoc(oldDocRef);
@@ -2223,7 +2230,6 @@ let calendarIsEditMode = false;
                                 }
                             }
 
-                            // Se encontrou dados em qualquer um dos formatos, faz a importação
                             if (backupDataParsed) {
                                 const strategy = await getImportStrategy();
                                 if (strategy === 'cancel') { downloadCloudBtn.textContent = '☁️ Baixar Nuvem'; return; }
@@ -2253,6 +2259,8 @@ let calendarIsEditMode = false;
                         }
                     });
                 }
+                
+                cloudConnected = true; // Marca como conectado e finaliza o setup
             } catch (error) {
                 console.warn("O carregamento da Nuvem falhou:", error);
             }
@@ -5147,43 +5155,43 @@ function renderScheduleView() {
 }
 
 // NOVO: Função para renderizar o seletor de ano de horários
-function renderScheduleYearSelect() {
-    if (scheduleSelectedInstitutionId) {
-        scheduleYearSelect.innerHTML = '<option value="" disabled selected>Selecione um Ano</option>';
-        // ALTERADO: Filtra anos não arquivados
-        const anosDaInstituicao = anosLetivos.filter(ano => ano.institutionId === scheduleSelectedInstitutionId && !ano.isArchived).sort((a, b) => b.year - a.year);
-        
-        if (anosDaInstituicao.length > 0) {
-            anosDaInstituicao.forEach(ano => {
-                const option = document.createElement('option');
-                option.value = ano.id;
-                option.textContent = ano.year;
-                scheduleYearSelect.appendChild(option);
-            });
-            scheduleYearLabel.classList.remove('hidden');
-            scheduleYearSelect.classList.remove('hidden');
-            
-            // Restaura seleção de ano se existir
-            if (scheduleSelectedYearId && anosDaInstituicao.some(a => a.id === scheduleSelectedYearId)) {
-                scheduleYearSelect.value = scheduleSelectedYearId;
+        function renderScheduleYearSelect() {
+            if (scheduleSelectedInstitutionId) {
+                scheduleYearSelect.innerHTML = '<option value="" disabled selected>Selecione um Ano</option>';
+                // ALTERADO: Filtra anos não arquivados
+                const anosDaInstituicao = anosLetivos.filter(ano => ano.institutionId === scheduleSelectedInstitutionId && !ano.isArchived).sort((a, b) => b.year - a.year);
+                
+                if (anosDaInstituicao.length > 0) {
+                    anosDaInstituicao.forEach(ano => {
+                        const option = document.createElement('option');
+                        option.value = ano.id;
+                        option.textContent = ano.year;
+                        scheduleYearSelect.appendChild(option);
+                    });
+                    scheduleYearLabel.classList.remove('hidden');
+                    scheduleYearSelect.classList.remove('hidden');
+                    
+                    // Restaura seleção de ano se existir
+                    if (scheduleSelectedYearId && anosDaInstituicao.some(a => a.id === scheduleSelectedYearId)) {
+                        scheduleYearSelect.value = scheduleSelectedYearId;
+                    } else {
+                        scheduleSelectedYearId = null;
+                    }
+
+                } else {
+                    scheduleYearLabel.classList.add('hidden');
+                    scheduleYearSelect.classList.add('hidden');
+                    scheduleSelectedYearId = null;
+                }
             } else {
+                scheduleYearLabel.classList.add('hidden');
+                scheduleYearSelect.classList.add('hidden');
+                scheduleYearSelect.innerHTML = '<option value="">Selecione um Ano</option>';
                 scheduleSelectedYearId = null;
             }
-
-        } else {
-            scheduleYearLabel.classList.add('hidden');
-            scheduleYearSelect.classList.add('hidden');
-            scheduleSelectedYearId = null;
         }
-    } else {
-        scheduleYearLabel.classList.add('hidden');
-        scheduleYearSelect.classList.add('hidden');
-        scheduleYearSelect.innerHTML = '<option value="">Selecione um Ano</option>';
-        scheduleSelectedYearId = null;
-    }
-}
 
-// Renderiza a tabela de horários com base no estado atual
+        // Renderiza a tabela de horários com base no estado atual
 function renderScheduleTable() {
     // NOVO: Pega a instituição e aplica cor/visibilidade
     const institution = institutions.find(i => i.id === scheduleSelectedInstitutionId);
