@@ -1913,7 +1913,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.14</div>
+        <div id="app-version">v 1.15</div>
     </footer>
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
@@ -1942,7 +1942,7 @@
         // 2. Registra o Service Worker (para cachear a página e funcionar sem internet)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'blob:') {
             const swCode = `
-                const CACHE_NAME = 'diario-prof-v1.14';
+                const CACHE_NAME = 'diario-prof-v1.15-fix';
                 const urlsToCache = ['./', './index.html'];
 
                 self.addEventListener('install', e => {
@@ -1981,7 +1981,11 @@
                         }).catch(() => {
                             // Se a internet cair ou o WiFi estiver desligado (Offline), puxa a versão da memória
                             return caches.match(e.request).then(response => {
-                                return response || caches.match('./index.html');
+                                if (response) return response;
+                                // CORREÇÃO DO TRAVAMENTO: Só devolve a página inteira se for um pedido de navegação
+                                if (e.request.mode === 'navigate') {
+                                    return caches.match('./index.html');
+                                }
                             });
                         })
                     );
