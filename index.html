@@ -1969,15 +1969,21 @@
 
                 self.addEventListener('fetch', e => {
                     if (e.request.method !== 'GET') return;
+                    
+                    // NOVA ESTRATÉGIA: Internet Primeiro (Network-First)
                     e.respondWith(
-                        caches.match(e.request).then(response => {
-                            return response || fetch(e.request).then(fetchRes => {
-                                return caches.open(CACHE_NAME).then(cache => {
-                                    cache.put(e.request, fetchRes.clone());
-                                    return fetchRes;
-                                });
+                        fetch(e.request).then(fetchRes => {
+                            // Se tem internet, pega do GitHub e atualiza a memória local silenciosamente
+                            return caches.open(CACHE_NAME).then(cache => {
+                                cache.put(e.request, fetchRes.clone());
+                                return fetchRes;
                             });
-                        }).catch(() => caches.match('./index.html')) // Redireciona para página inicial offline (Adeus Dinossauro)
+                        }).catch(() => {
+                            // Se a internet cair ou o WiFi estiver desligado (Offline), puxa a versão da memória
+                            return caches.match(e.request).then(response => {
+                                return response || caches.match('./index.html');
+                            });
+                        })
                     );
                 });
             `;
