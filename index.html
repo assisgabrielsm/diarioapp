@@ -1395,6 +1395,7 @@
                         <div class="form-row">
                             <input type="date" id="visto-date" required>
                             <input type="text" id="visto-description" placeholder="Descrição da atividade" required>
+                            <input type="number" id="visto-weight" placeholder="Peso" value="1" step="0.1" style="width: 80px;" required>
                         </div>
                         <div class="form-row">
                             <input type="hidden" id="visto-id">
@@ -1913,7 +1914,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.15</div>
+        <div id="app-version">v 1.16</div>
     </footer>
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
@@ -3161,9 +3162,11 @@ let calendarIsEditMode = false;
 
             const vistosOptionsFilter = ["-", "C", "I", "AT", "F", "NFT", "NTM", "ÔNIBUS"]; // Opções para o filtro
             vistosDaTurma.forEach(visto => {
+                const peso = visto.weight || 1;
                 vistosTableHeader.insertAdjacentHTML('beforeend', `
                     <th class="visto-header col-header" data-visto-id="${visto.id}">
                         <div><input type="checkbox" class="table-filter-checkbox" data-filter-type="col" data-visto-id="${visto.id}"> ${new Date(visto.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</div>
+                        <div style="font-size: 0.8em; color: #555;">(Peso: ${peso})</div>
                         <div class="visto-header-actions col-header-actions">
                             <button class="edit-visto-btn" data-id="${visto.id}">✏️</button>
                             <button class="info-visto-btn" data-id="${visto.id}">ℹ️</button>
@@ -4342,6 +4345,7 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
         addVistoBtn.addEventListener('click', () => {
             vistoForm.reset();
             $('#visto-id').value = '';
+            $('#visto-weight').value = '1';
             vistoFormPanel.classList.remove('hidden');
         });
 
@@ -4352,6 +4356,7 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
             const id = parseInt($('#visto-id').value);
             const date = $('#visto-date').value;
             const description = $('#visto-description').value.trim();
+            const weight = parseFloat($('#visto-weight').value) || 1;
             if (!date || !description) { showModal('Data e descrição são obrigatórias.'); return; }
 
             vistosResults = vistosResults.filter(r => r.id !== `${selectedClassId}-${selectedPeriod}`);
@@ -4359,9 +4364,9 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
 
             if (id) {
                 const index = vistos.findIndex(v => v.id === id);
-                if (index > -1) Object.assign(vistos[index], { date, description });
+                if (index > -1) Object.assign(vistos[index], { date, description, weight });
             } else {
-                vistos.push({ id: Date.now(), date, description, classId: selectedClassId, period: selectedPeriod, records: [] });
+                vistos.push({ id: Date.now(), date, description, weight, classId: selectedClassId, period: selectedPeriod, records: [] });
             }
             saveDb('vistos_db', vistos);
             renderVistosView();
@@ -4388,11 +4393,12 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
                     $('#visto-id').value = visto.id;
                     $('#visto-date').value = visto.date;
                     $('#visto-description').value = visto.description;
+                    $('#visto-weight').value = visto.weight || 1;
                     vistoFormPanel.classList.remove('hidden');
                 }
             } else if (button.classList.contains('info-visto-btn')) {
                 const visto = vistos.find(v => v.id === vistoId);
-                if (visto) showModal(`Descrição: ${visto.description}`);
+                if (visto) showModal(`Descrição: ${visto.description}\nPeso: ${visto.weight || 1}`);
             } else if (button.classList.contains('remove-visto-btn')) {
                 if (await showModal('Remover este visto e seus registros?', true)) {
                     vistos = vistos.filter(v => v.id !== vistoId);
@@ -4440,12 +4446,15 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
             const vistosDaTurma = vistos.filter(v => v.classId === selectedClassId && v.period === selectedPeriod);
             if (vistosDaTurma.length === 0) { showModal('Não há vistos para calcular.'); return; }
 
-            const valuePerColumn = totalValue / vistosDaTurma.length;
+            const totalWeight = vistosDaTurma.reduce((sum, v) => sum + (v.weight || 1), 0);
+            const valuePerWeightUnit = totalValue / totalWeight;
+
             const multipliers = { 'C': 1, 'I': 0.5, 'AT': 0.8, 'F': 0, 'NFT': 0, 'NTM': 0, 'ÔNIBUS': 0, '-': 0 };
             const scores = alunos.filter(a => a.classId === selectedClassId && a.active !== false).map(aluno => {
                 let totalScore = vistosDaTurma.reduce((total, visto) => {
                     const value = (visto.records.find(r => r.studentId === aluno.id) || {}).value || '-';
-                    return total + (valuePerColumn * (multipliers[value] || 0));
+                    const currentVistoWeight = visto.weight || 1;
+                    return total + (valuePerWeightUnit * currentVistoWeight * (multipliers[value] || 0));
                 }, 0);
                 return { studentId: aluno.id, score: roundToOneDecimal(totalScore) };
             });
