@@ -1387,6 +1387,7 @@
                 
                 <div class="main-buttons">
                     <button id="add-visto-btn" style="font-size: 1.5em; padding: 5px 12px;">+</button>
+                    <button id="import-visto-btn" style="font-size: 1.2em; padding: 5px 12px;" title="Importar Visto de outra Turma">📥 Importar</button>
                     <button id="calculate-vistos-btn">Calcular</button>
                     <button id="toggle-inactive-vistos-btn" style="background-color: #6c757d; color: white; border-color: #6c757d;">Ocultar Alunos Inativos</button>
                 </div>
@@ -1812,6 +1813,38 @@
       </div>
     </div>
     <!-- FIM NOVO MODAL -->
+
+<!-- NOVO MODAL: Importar Vistos -->
+<div id="import-visto-modal-overlay" class="modal-overlay hidden">
+  <div class="custom-modal-content" style="max-width: 500px; text-align: left;">
+    <h4>Importar Visto</h4>
+    <form id="import-visto-form" class="styled-form">
+        <label>Importar da Turma:</label>
+        <select id="import-visto-class-select" required></select>
+        
+        <label>Período:</label>
+        <select id="import-visto-period-select" required></select>
+        
+        <label>Selecione a Atividade:</label>
+        <select id="import-visto-activity-select" required></select>
+        
+        <label style="display:flex; align-items:center; gap: 10px; margin-top: 10px; cursor: pointer; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <input type="checkbox" id="import-visto-marks-checkbox" style="transform: scale(1.2);">
+            Importar também as marcações (C, F, AT...)
+        </label>
+        
+        <label style="margin-top: 10px;">Data para a nova Atividade nesta Turma:</label>
+        <input type="date" id="import-visto-new-date" required>
+        
+        <div class="main-buttons" style="justify-content: flex-end; margin-top: 20px;">
+            <button type="submit" class="btn-primary">Importar</button>
+            <button type="button" id="cancel-import-visto-btn">Cancelar</button>
+        </div>
+    </form>
+  </div>
+</div>
+<!-- FIM NOVO MODAL IMPORTAR VISTOS -->
+
 <!-- Modal de Configuração do Planejamento -->
 <div id="planning-config-modal-overlay" class="modal-overlay hidden">
     <div id="planning-config-modal" class="custom-modal-content" style="text-align:left">
@@ -1914,7 +1947,7 @@
         <div style="width: 40px;"></div> <!-- Espaçador para manter o status centralizado -->
         <div id="sync-status">Dados locais. Nenhum backup restaurado.</div>
         <!-- INSTRUÇÃO PARA O GEMINI: A cada alteração funcional no código, incremente a versão abaixo (ex: v 1.1, v 1.2, etc.) -->
-        <div id="app-version">v 1.17</div>
+        <div id="app-version">v 1.18</div>
     </footer>
 
     <!-- INÍCIO DO JAVASCRIPT OTIMIZADO -->
@@ -2347,6 +2380,15 @@ let calendarIsEditMode = false;
         const toggleVistosPanelBtn = $('#toggle-vistos-panel-btn');
         const vistosPanel = $('#vistos-panel');
         const addVistoBtn = $('#add-visto-btn');
+        const importVistoBtn = $('#import-visto-btn'); // NOVO DOM
+        const importVistoModalOverlay = $('#import-visto-modal-overlay'); // NOVO DOM
+        const importVistoClassSelect = $('#import-visto-class-select'); // NOVO DOM
+        const importVistoPeriodSelect = $('#import-visto-period-select'); // NOVO DOM
+        const importVistoActivitySelect = $('#import-visto-activity-select'); // NOVO DOM
+        const importVistoNewDate = $('#import-visto-new-date'); // NOVO DOM
+        const importVistoMarksCheckbox = $('#import-visto-marks-checkbox'); // NOVO DOM
+        const importVistoForm = $('#import-visto-form'); // NOVO DOM
+        const cancelImportVistoBtn = $('#cancel-import-visto-btn'); // NOVO DOM
         const vistoFormPanel = $('#visto-form-panel');
         const vistoForm = $('#visto-form');
         const cancelVistoEditBtn = $('#cancel-visto-edit-btn');
@@ -4372,6 +4414,108 @@ $('#goto-assessments-calendar-btn').addEventListener('click', () => navigateTo('
             renderVistosView();
             vistoFormPanel.classList.add('hidden');
         });
+
+        // --- INÍCIO LOGICA DE IMPORTAÇÃO DE VISTOS ---
+        importVistoBtn.addEventListener('click', () => {
+            // Popula turmas do mesmo ano letivo (incluindo a atual, caso queira importar de outro período)
+            importVistoClassSelect.innerHTML = '<option value="">-- Selecione uma Turma --</option>';
+            const turmasDoAno = turmas.filter(t => t.yearId === selectedYearId).sort((a,b) => `${a.name} - ${a.subject}`.localeCompare(`${b.name} - ${b.subject}`));
+            turmasDoAno.forEach(t => {
+                importVistoClassSelect.insertAdjacentHTML('beforeend', `<option value="${t.id}">${t.name} - ${t.subject}</option>`);
+            });
+            
+            importVistoPeriodSelect.innerHTML = '<option value="">-- Selecione um Período --</option>';
+            importVistoActivitySelect.innerHTML = '<option value="">-- Selecione uma Atividade --</option>';
+            importVistoForm.reset();
+            importVistoModalOverlay.classList.remove('hidden');
+        });
+
+        cancelImportVistoBtn.addEventListener('click', () => importVistoModalOverlay.classList.add('hidden'));
+
+        importVistoClassSelect.addEventListener('change', () => {
+            const classId = parseInt(importVistoClassSelect.value);
+            importVistoPeriodSelect.innerHTML = '<option value="">-- Selecione um Período --</option>';
+            importVistoActivitySelect.innerHTML = '<option value="">-- Selecione uma Atividade --</option>';
+            if (classId) {
+                const turmaOrigem = turmas.find(t => t.id === classId);
+                const institution = institutions.find(i => i.id === turmaOrigem.institutionId);
+                const periodMap = { 'Bimestral': ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'], 'Trimestral': ['1º Trimestre', '2º Trimestre', '3º Trimestre'], 'Semestral': ['1º Semestre', '2º Semestre'] };
+                (periodMap[institution.periodType] || []).forEach(opt => importVistoPeriodSelect.insertAdjacentHTML('beforeend', `<option value="${opt}">${opt}</option>`));
+            }
+        });
+
+        importVistoPeriodSelect.addEventListener('change', () => {
+            const classId = parseInt(importVistoClassSelect.value);
+            const period = importVistoPeriodSelect.value;
+            importVistoActivitySelect.innerHTML = '<option value="">-- Selecione uma Atividade --</option>';
+            if (classId && period) {
+                const vistosDisponiveis = vistos.filter(v => v.classId === classId && v.period === period);
+                if (vistosDisponiveis.length === 0) {
+                    importVistoActivitySelect.insertAdjacentHTML('beforeend', `<option value="" disabled>Nenhuma atividade encontrada.</option>`);
+                } else {
+                    vistosDisponiveis.forEach(v => {
+                        const dateStr = new Date(v.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                        importVistoActivitySelect.insertAdjacentHTML('beforeend', `<option value="${v.id}">${dateStr} - ${v.description} (Peso: ${v.weight || 1})</option>`);
+                    });
+                }
+            }
+        });
+
+        importVistoForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const sourceActivityId = parseInt(importVistoActivitySelect.value);
+            const sourceClassId = parseInt(importVistoClassSelect.value);
+            const newDate = importVistoNewDate.value;
+            const importMarks = importVistoMarksCheckbox.checked;
+
+            if (!sourceActivityId || !newDate) { showModal('Preencha todos os campos obrigatórios.'); return; }
+
+            const sourceActivity = vistos.find(v => v.id === sourceActivityId);
+            if (!sourceActivity) return;
+
+            // Prepara a nova atividade
+            const newActivity = {
+                id: Date.now(),
+                classId: selectedClassId,
+                period: selectedPeriod,
+                date: newDate,
+                description: sourceActivity.description,
+                weight: sourceActivity.weight || 1,
+                records: []
+            };
+
+            // Lógica de importação de marcações (cruzando alunos por nome exato)
+            if (importMarks) {
+                const sourceStudents = alunos.filter(a => a.classId === sourceClassId);
+                const currentStudents = alunos.filter(a => a.classId === selectedClassId);
+
+                sourceActivity.records.forEach(record => {
+                    const sourceStudent = sourceStudents.find(s => s.id === record.studentId);
+                    if (sourceStudent) {
+                        const matchStudent = currentStudents.find(s => s.name.toLowerCase() === sourceStudent.name.toLowerCase());
+                        if (matchStudent) {
+                            newActivity.records.push({
+                                studentId: matchStudent.id,
+                                value: record.value
+                            });
+                        }
+                    }
+                });
+            }
+
+            vistos.push(newActivity);
+            
+            // Invalida o cálculo atual do período
+            vistosResults = vistosResults.filter(r => r.id !== `${selectedClassId}-${selectedPeriod}`);
+            
+            saveDb('vistos_db', vistos);
+            saveDb('vistos_results_db', vistosResults);
+            
+            renderVistosView();
+            importVistoModalOverlay.classList.add('hidden');
+            showModal('Atividade importada com sucesso!');
+        });
+        // --- FIM LOGICA DE IMPORTAÇÃO DE VISTOS ---
 
         // INÍCIO DA CORREÇÃO: O bloco de código abaixo estava "flutuando" fora de um event listener.
         // Adicionando o listener de 'click' para a 'activitiesView'.
